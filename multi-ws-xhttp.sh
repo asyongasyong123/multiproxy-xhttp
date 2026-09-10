@@ -292,7 +292,7 @@ deploy_new_service() {
   echo -e "${GREEN}✅ Performance:${NC} Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s"
   echo ""
 
-  cat> config.json <<'EOF'
+  cat > config.json <<'EOF'
 {
   "log": { "loglevel": "warning" },
   "dns": {
@@ -379,7 +379,78 @@ EOF
   DECOY_HTML='<!DOCTYPE html><html><head><title>System Status</title><style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;text-align:center;}h1{color:#58a6ff;font-size:24px;}p{color:#8b949e;}</style></head><body><div><h1>Welcome to my '"$DISPLAY_ENGINE"' cloud application gateway.</h1><p>Everything is operational.</p></div></body></html>'
 
   if [ "$ENGINE" = "openresty" ]; then
-    cat > nginx.conf <<EOF "OK\n"; "upgrade"; '$DECOY_HTML'; / /health /trojan-ws /trojan-xhttp /vless-ws /vless-xhttp 0; 1.1; 100000; 10240; 10s; 200 3600; 3600s; 4096; 8080; Connection Content-Type EOF Host Upgrade X-Real-IP \$host; \$http_upgrade; \$remote_addr; _; add_header application/octet-stream; auto; cat client_max_body_size default_type epoll; events http http://127.0.0.1:10001; http://127.0.0.1:10002; http://127.0.0.1:10003; http://127.0.0.1:10004; include keepalive_requests keepalive_timeout listen location mime.types; multi_accept off; on; proxy_buffering proxy_connect_timeout proxy_http_version proxy_pass proxy_read_timeout proxy_request_buffering proxy_send_timeout proxy_set_header return sendfile server server_name tcp_nodelay tcp_nopush text/html; text/plain; use worker_connections worker_processes worker_rlimit_nofile { }> entrypoint.sh <<'EOF'
+    cat > nginx.conf <<EOF
+worker_processes auto;
+events {
+    worker_connections 10240;
+    use epoll;
+    multi_accept on;
+}
+http {
+    include mime.types;
+    default_type application/octet-stream;
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+    keepalive_requests 100000;
+    client_max_body_size 4096M;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+    proxy_connect_timeout 10s;
+    proxy_buffering off;
+    proxy_request_buffering off;
+
+    server {
+        listen 8080;
+        server_name _;
+
+        location /health {
+            return 200 "OK\n";
+            add_header Content-Type text/plain;
+        }
+
+        location /trojan-ws {
+            proxy_pass http://127.0.0.1:10001;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+        }
+
+        location /vless-ws {
+            proxy_pass http://127.0.0.1:10002;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade \$http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+        }
+
+        location /trojan-xhttp {
+            proxy_pass http://127.0.0.1:10003;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+        }
+
+        location /vless-xhttp {
+            proxy_pass http://127.0.0.1:10004;
+            proxy_http_version 1.1;
+            proxy_set_header Host \$host;
+            proxy_set_header X-Real-IP \$remote_addr;
+        }
+
+        location / {
+            default_type text/html;
+            return 200 '$DECOY_HTML';
+        }
+    }
+}
+EOF
+
+    cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
 sleep 2
@@ -404,7 +475,90 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
   elif [ "$ENGINE" = "envoy" ]; then
-    cat > envoy.yaml <<EOF "/" "/health" "/trojan-ws" "/trojan-xhttp" "/vless-ws" "/vless-xhttp" "@type": "OK\n" "content-type" "text/html" "websocket" '$DECOY_HTML' - 0.0.0.0 10001 10002 10003 10004 10s 127.0.0.1, 200 200, 3600s 3600s, 8080 AUTO EOF ROUND_ROBIN STATIC ["*"] [{ address: body: cat cluster: cluster_name: clusters: codec_type: connect_timeout: direct_response: domains: endpoint: endpoints: envoy.filters.http.router envoy.filters.network.http_connection_manager filter_chains: filters: header: http_filters: ingress_http inline_string: key: lb_endpoints: lb_policy: listener_0 listeners: load_assignment: local_route local_service match: name: port_value: prefix: response_headers_to_add: route: route_config: routes: socket_address: stat_prefix: static_resources: status: timeout: trojan_cluster trojan_cluster, trojan_xhttp_cluster trojan_xhttp_cluster, type.googleapis.com/envoy.extensions.filters.http.router.v3.Router type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager type: typed_config: upgrade_configs: upgrade_type: value: virtual_hosts: vless_cluster vless_cluster, vless_xhttp_cluster vless_xhttp_cluster, { } }]> entrypoint.sh <<'EOF'
+    cat > envoy.yaml <<EOF
+static_resources:
+  listeners:
+  - name: listener_0
+    address:
+      socket_address:
+        address: 0.0.0.0
+        port_value: 8080
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress_http
+          route_config:
+            name: local_route
+            virtual_hosts:
+            - name: local_service
+              domains: ["*"]
+              routes:
+              - match: { prefix: "/health" }
+                direct_response: { status: 200, body: { inline_string: "OK\n" } }
+              - match: { prefix: "/trojan-ws" }
+                route: { cluster: trojan_cluster, upgrade_configs: [{ upgrade_type: "websocket" }], timeout: 3600s }
+              - match: { prefix: "/vless-ws" }
+                route: { cluster: vless_cluster, upgrade_configs: [{ upgrade_type: "websocket" }], timeout: 3600s }
+              - match: { prefix: "/trojan-xhttp" }
+                route: { cluster: trojan_xhttp_cluster, timeout: 3600s }
+              - match: { prefix: "/vless-xhttp" }
+                route: { cluster: vless_xhttp_cluster, timeout: 3600s }
+              - match: { prefix: "/" }
+                direct_response: { status: 200, body: { inline_string: '$DECOY_HTML' } }
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+  - name: trojan_cluster
+    connect_timeout: 10s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: trojan_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: 127.0.0.1, port_value: 10001 }
+  - name: vless_cluster
+    connect_timeout: 10s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: vless_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: 127.0.0.1, port_value: 10002 }
+  - name: trojan_xhttp_cluster
+    connect_timeout: 10s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: trojan_xhttp_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: 127.0.0.1, port_value: 10003 }
+  - name: vless_xhttp_cluster
+    connect_timeout: 10s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: vless_xhttp_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: 127.0.0.1, port_value: 10004 }
+EOF
+
+    cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
 sleep 2
@@ -429,7 +583,60 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
   elif [ "$ENGINE" = "haproxy" ]; then
-    cat > haproxy.cfg <<EOF "OK\n" "text/html" "text/plain" '$DECOY_HTML' *:8080 /health /trojan-ws /trojan-xhttp /vless-ws /vless-xhttp 10000 10s 127.0.0.1:10001 127.0.0.1:10002 127.0.0.1:10003 127.0.0.1:10004 200 3600s EOF acl backend bind cat client connect content-type default_backend defaults format frontend global health_backend http http-request if is_health is_trojan is_trojan_xhttp is_vless is_vless_xhttp local0 log main maxconn mode path path_beg raw return server status stdout string timeout trojan_backend trojan_xhttp_backend use_backend vless_backend vless_xhttp_backend xray1 xray2 xray3 xray4> entrypoint.sh <<'EOF'
+    cat > haproxy.cfg <<EOF
+global
+    log stdout format raw local0
+    maxconn 10000
+
+defaults
+    log global
+    mode http
+    option httplog
+    timeout connect 10s
+    timeout client 3600s
+    timeout server 3600s
+
+frontend main
+    bind *:8080
+    mode http
+
+    acl is_health path /health
+    acl is_trojan path /trojan-ws
+    acl is_vless path /vless-ws
+    acl is_trojan_xhttp path /trojan-xhttp
+    acl is_vless_xhttp path /vless-xhttp
+
+    http-request return status 200 content-type "text/plain" string "OK\n" if is_health
+
+    use_backend trojan_backend if is_trojan
+    use_backend vless_backend if is_vless
+    use_backend trojan_xhttp_backend if is_trojan_xhttp
+    use_backend vless_xhttp_backend if is_vless_xhttp
+
+    default_backend decoy_backend
+
+backend decoy_backend
+    mode http
+    http-request return status 200 content-type "text/html" string '$DECOY_HTML'
+
+backend trojan_backend
+    mode http
+    server xray1 127.0.0.1:10001
+
+backend vless_backend
+    mode http
+    server xray2 127.0.0.1:10002
+
+backend trojan_xhttp_backend
+    mode http
+    server xray3 127.0.0.1:10003
+
+backend vless_xhttp_backend
+    mode http
+    server xray4 127.0.0.1:10004
+EOF
+
+    cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
 sleep 2
@@ -489,7 +696,7 @@ EOF
 while true; do
   clear
   echo "======================================"
-  echo "  MULTI-WS-XHTTP-GCP-DEPLOYER MENU    "
+  echo "  MULTI-WS-XHTTP-GCP-XRAY DEPLOYER MENU    "
   echo "======================================"
   echo "1) Deploy New GCP-XRAY Service"
   echo "2) List All Services & FULL DETAILS"
