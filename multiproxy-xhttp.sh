@@ -2,12 +2,8 @@
 set -euo pipefail
 
 # =========================================
-# 🚀 GCP-XRAY MULTI-ENGINE DEPLOYER — FIXED + BEAUTIFUL DECOY
-# ✅ ENGINES: OPENRESTY, ENVOY, HAPROXY
-# ✅ PROTOCOLS: WS & XHTTP
-# ✅ INTEGRATED DNS & ADBLOCK ROUTING
-# ✅ FIXED: Xray startup, assets path, entrypoint
-# ✅ BEAUTIFUL RESPONSIVE DECOY PAGE
+# 🚀 GCP-XRAY XHTTP DEPLOYER — MUX ENABLED ✅
+# ✅ With Added Mux Block
 # =========================================
 
 GREEN='\033[1;32m'
@@ -17,15 +13,14 @@ CYAN='\033[1;36m'
 NC='\033[0m'
 
 # ==============================================
-# AUTO INSTALL JQ IF MISSING
+# DEPENDENCIES
 # ==============================================
 if ! command -v jq &> /dev/null; then
   echo -e "\n${YELLOW}⚠️ Installing required tool: jq...${NC}"
-  sudo apt update -qq && sudo apt install -y -qq jq netcat-openbsd || {
-    echo -e "${RED}❌ Failed to install jq/netcat!${NC}"
+  sudo apt update -qq && sudo apt install -y -qq jq || {
+    echo -e "${RED}❌ Failed to install jq!${NC}"
     exit 1
   }
-  echo -e "${GREEN}✅ jq & netcat installed successfully!${NC}"
 fi
 
 # ==============================================
@@ -41,9 +36,9 @@ list_deployed_services() {
 
   declare -A REGION_NAMES=(
     ["us-central1"]="Iowa, United States 🇺🇸"
-    ["us-east1"]="South Carolina, US 🇺🇸"
-    ["us-east4"]="N. Virginia, US 🇺🇸"
-    ["us-west1"]="Oregon, US 🇺🇸"
+    ["us-east1"]="South Carolina, United States 🇺🇸"
+    ["us-east4"]="N. Virginia, United States 🇺🇸"
+    ["us-west1"]="Oregon, United States 🇺🇸"
     ["asia-east1"]="Taiwan 🇹🇼"
     ["asia-southeast1"]="Singapore 🇸🇬"
     ["asia-northeast1"]="Tokyo, Japan 🇯🇵"
@@ -65,7 +60,9 @@ list_deployed_services() {
     while IFS=$'\t' read -r NAME URL REGION CREATED; do
       [ -z "$NAME" ] && continue
       FULL_REGION="${REGION_NAMES[$REGION]:-$REGION}"
+
       DETAILS=$(gcloud run services describe "$NAME" --region "$REGION" --project="$PROJECT_ID" --format=json 2>/dev/null)
+
       MEMORY=$(echo "$DETAILS" | jq -r '.spec.template.spec.containers[0].resources.limits.memory // "1Gi"')
       CPU=$(echo "$DETAILS" | jq -r '.spec.template.spec.containers[0].resources.limits.cpu // "1"')
       BILLING=$(echo "$DETAILS" | jq -r '.spec.template.spec.billingMode // "Instance Based"' | sed 's/_/ /g;s/^./\U&/')
@@ -73,6 +70,7 @@ list_deployed_services() {
       MAX_INST=$(echo "$DETAILS" | jq -r '.spec.template.spec.maxInstances // "1"')
       CONCURRENCY=$(echo "$DETAILS" | jq -r '.spec.template.spec.containerConcurrency // "300"')
       TIMEOUT=$(echo "$DETAILS" | jq -r '.spec.template.spec.timeoutSeconds // "300"')
+
       echo -e "${GREEN}=== SERVICE #$COUNT ===${NC}"
       echo "🔹 Name:         $NAME"
       echo "🔹 URL:          $URL"
@@ -89,7 +87,7 @@ list_deployed_services() {
   fi
   
   echo -e "\n======================================"
-  read -p "Press [Enter] to return..." </dev/tty
+  read -p "Press [Enter] to return..."
 }
 
 # ==============================================
@@ -106,18 +104,20 @@ select_region() {
   echo "--- Asia Pacific ---"
   echo "5) asia-east1       (Taiwan 🇹🇼 — RECOMMENDED!)"
   echo "6) asia-southeast1  (Singapore 🇸🇬)"
-  echo "7) asia-northeast1  (Tokyo, Japan 🇯🇵)"
-  echo "8) asia-northeast3  (Seoul, South Korea 🇰🇷)"
+  echo "7) asia-northeast1   (Tokyo, Japan 🇯🇵)"
+  echo "8) asia-northeast3   (Seoul, South Korea 🇰🇷)"
   echo "9) asia-south1      (Mumbai, India 🇮🇳)"
   echo ""
   echo "--- Europe ---"
-  echo "10) europe-west1    (Belgium 🇧🇪)"
+  echo "10) europe-west1     (Belgium 🇧🇪)"
   echo "11) europe-west4    (Netherlands 🇳🇱)"
   echo "12) europe-west9    (Paris, France 🇫🇷)"
   echo ""
   echo "0) Enter custom region code"
   echo ""
-  read -p "Enter region number: " REGION_NUM </dev/tty
+
+  read -p "Enter region number: " REGION_NUM
+
   case $REGION_NUM in
     1) REGION="us-central1" ;;
     2) REGION="us-east1" ;;
@@ -131,9 +131,10 @@ select_region() {
     10) REGION="europe-west1" ;;
     11) REGION="europe-west4" ;;
     12) REGION="europe-west9" ;;
-    0) read -p "Type full region code: " REGION </dev/tty ;;
+    0) read -p "Type full region code: " REGION ;;
     *) echo -e "${YELLOW}⚠️ Invalid! Using us-central1${NC}"; REGION="us-central1" ;;
   esac
+
   echo -e "${GREEN}✅ Selected Region:${NC} $REGION"
 }
 
@@ -142,12 +143,14 @@ select_region() {
 # ==============================================
 deploy_new_service() {
   select_region
+
   PROJECT_ID="$(gcloud config get-value project 2>/dev/null)"
   if [ -z "$PROJECT_ID" ]; then
       echo -e "${RED}❌ No project set! Run: gcloud config set project YOUR_ID${NC}"
-      read -p "Press [Enter] to return..." </dev/tty
+      read -p "Press [Enter] to return..."
       return
   fi
+
   gcloud services enable run.googleapis.com cloudbuild.googleapis.com --project="$PROJECT_ID" --quiet
 
   # ==============================================
@@ -160,7 +163,7 @@ deploy_new_service() {
   echo "2) Envoy Proxy        - [High Performance / Cloud Native]"
   echo "3) HAProxy            - [Ultra Low Latency / Lightweight]"
   while true; do
-      read -p "Select Engine [1-3]: " ENGINE_CHOICE </dev/tty
+      read -p "Select Engine [1-3]: " ENGINE_CHOICE
       case $ENGINE_CHOICE in
           1) ENGINE="openresty"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; break ;;
           2) ENGINE="envoy"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; break ;;
@@ -169,8 +172,9 @@ deploy_new_service() {
       esac
   done
 
+  # 🏷️ GENERATE SERVICE NAME WITH ENGINE INCLUDED
   RAND=$(openssl rand -hex 3)
-  CLOUD_RUN_SERVICE_NAME="gcp-xray-${ENGINE}-$RAND"
+  CLOUD_RUN_SERVICE_NAME="gcp-xray-xhttp-${ENGINE}-$RAND"
 
   echo -e "\n${CYAN}=========================================${NC}"
   echo -e "${GREEN}          BILLING MODE${NC}"
@@ -178,7 +182,7 @@ deploy_new_service() {
   echo -e "${YELLOW}Instance-Based = Stable, No Throttling${NC}"
   echo "1) Request-Based  |  2) Instance-Based"
   while true; do
-      read -p "Select [1-2]: " BILLING_CHOICE </dev/tty
+      read -p "Select [1-2]: " BILLING_CHOICE
       case $BILLING_CHOICE in
           1) BILLING_MODE="request"; BILLING_FLAG="--cpu-throttling"; break ;;
           2) BILLING_MODE="instance"; BILLING_FLAG="--no-cpu-throttling"; break ;;
@@ -192,14 +196,14 @@ deploy_new_service() {
   echo -e "${GREEN}1) AUTO PRESETS  |  Recommended${NC}"
   echo -e "${YELLOW}2) MANUAL SETUP  |  Full Memory & vCPU Range${NC}"
   while true; do
-      read -p "Select Mode [1-2]: " RES_MODE </dev/tty
+      read -p "Select Mode [1-2]: " RES_MODE
       case $RES_MODE in
           1)
               echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
               echo "1) Basic:    1Gi RAM + 1 vCPU"
               echo "2) Balanced: 2Gi RAM + 2 vCPU ✅"
               echo "3) Turbo:    4Gi RAM + 2 vCPU (High Concurrency)"
-              read -p "Choose preset [1-3]: " AUTO_CHOICE </dev/tty
+              read -p "Choose preset [1-3]: " AUTO_CHOICE
               case $AUTO_CHOICE in
                   1) MEMORY="1Gi"; CPU="1" ;;
                   2) MEMORY="2Gi"; CPU="2" ;;
@@ -207,6 +211,7 @@ deploy_new_service() {
                   *) echo -e "${YELLOW}Using Balanced preset${NC}"; MEMORY="2Gi"; CPU="2" ;;
               esac
               echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU${NC}"
+              
               MIN_INST=1
               MAX_INST=5
               CONCURRENCY=200
@@ -218,7 +223,7 @@ deploy_new_service() {
               echo "Select Memory:"
               echo "1) 256Mi   2) 512Mi   3) 1Gi   4) 2Gi"
               echo "5) 4Gi     6) 8Gi     7) 16Gi  8) Custom input"
-              read -p "Select Memory [1-8]: " MEM </dev/tty
+              read -p "Select Memory [1-8]: " MEM
               case $MEM in
                   1) MEMORY="256Mi" ;;
                   2) MEMORY="512Mi" ;;
@@ -227,32 +232,39 @@ deploy_new_service() {
                   5) MEMORY="4Gi" ;;
                   6) MEMORY="8Gi" ;;
                   7) MEMORY="16Gi" ;;
-                  8) read -p "Type custom memory: " MEMORY </dev/tty ;;
+                  8) read -p "Type custom memory: " MEMORY ;;
                   *) MEMORY="1Gi" ;;
               esac
+
               echo -e "\nSelect vCPU:"
               echo "1) 1 vCPU   2) 2 vCPU   3) 4 vCPU   4) 8 vCPU   5) Custom input"
-              read -p "Select vCPU [1-5]: " CPU_SEL </dev/tty
+              read -p "Select vCPU [1-5]: " CPU_SEL
               case $CPU_SEL in
                   1) CPU="1" ;;
                   2) CPU="2" ;;
                   3) CPU="4" ;;
                   4) CPU="8" ;;
-                  5) read -p "Type custom vCPU: " CPU </dev/tty ;;
+                  5) read -p "Type custom vCPU: " CPU ;;
                   *) CPU="1" ;;
               esac
+
               echo -e "${GREEN}✅ Custom Selected: $MEMORY RAM | $CPU vCPU${NC}"
+
               echo -e "\n${CYAN}=========================================${NC}"
-              echo -e "${GREEN}    PERFORMANCE & SCALING CONFIGURATION${NC}"
+              echo -e "${GREEN}    PERFORMANCE & SCALING CONFIGURATION  ${NC}"
               echo -e "${CYAN}=========================================${NC}"
-              read -p "Min Instances [Default: 0]: " MIN_INST </dev/tty
+              read -p "Min Instances [Default: 0]: " MIN_INST
               MIN_INST=${MIN_INST:-0}
-              read -p "Max Instances [Default: 1]: " MAX_INST </dev/tty
+
+              read -p "Max Instances [Default: 1]: " MAX_INST
               MAX_INST=${MAX_INST:-1}
-              read -p "Concurrency / Max Connections [Default: 1000]: " CONCURRENCY </dev/tty
+
+              read -p "Concurrency / Max Connections [Default: 1000]: " CONCURRENCY
               CONCURRENCY=${CONCURRENCY:-1000}
-              read -p "Timeout in seconds [Default: 3600]: " TIMEOUT </dev/tty
+
+              read -p "Timeout in seconds [Default: 3600]: " TIMEOUT
               TIMEOUT=${TIMEOUT:-3600}
+
               echo -e "${GREEN}✅ Config Set: Min: $MIN_INST | Max: $MAX_INST | Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s${NC}"
               break
               ;;
@@ -267,17 +279,17 @@ deploy_new_service() {
   clear
   echo ""
   echo -e "${CYAN}=========================================${NC}"
-  echo -e "${GREEN}🚀 GCP-XRAY DEPLOYER | MULTI-ENGINE SETUP${NC}"
+  echo -e "${GREEN}🚀 GCP-XRAY XHTTP DEPLOYER | MUX ENABLED ✅${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}✅ Project:${NC} $PROJECT_ID"
   echo -e "${GREEN}✅ Region:${NC} $REGION"
   echo -e "${GREEN}✅ Service Name:${NC} $CLOUD_RUN_SERVICE_NAME"
   echo -e "${GREEN}✅ Scaling:${NC} Min: $MIN_INST | Max: $MAX_INST"
-  echo -e "${GREEN}✅ Performance:${NC} Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s"
+  echo -e "${GREEN}✅ Mux: ENABLED — Mogana kung naka-ON sa NetMod ✅${NC}"
   echo ""
 
   # ==============================================
-  # ✅ FIXED CONFIG.JSON — added assets section
+  # XRAY CONFIG — MUX ENABLED ✅
   # ==============================================
   cat > config.json <<'EOF'
 {
@@ -285,9 +297,6 @@ deploy_new_service() {
   "dns": {
     "servers": ["8.8.8.8", "8.8.4.4"],
     "strategy": "UseIPv4"
-  },
-  "assets": {
-    "directory": "/usr/local/share/xray/"
   },
   "policy": {
     "levels": {
@@ -300,54 +309,40 @@ deploy_new_service() {
   },
   "inbounds": [
     {
-      "tag": "trojan-ws",
+      "tag": "trojan-xhttp",
       "port": 10001,
       "listen": "127.0.0.1",
       "protocol": "trojan",
       "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
       "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
       "streamSettings": {
-        "network": "ws",
-        "wsSettings": { "path": "/trojan-ws" },
+        "network": "xhttp",
+        "xhttpSettings": {
+          "path": "/trojan-xhttp",
+          "mux": {
+            "enabled": true,
+            "concurrency": 4
+          }
+        },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     },
     {
-      "tag": "vless-ws",
+      "tag": "vless-xhttp",
       "port": 10002,
       "listen": "127.0.0.1",
       "protocol": "vless",
       "settings": { "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}], "decryption": "none" },
       "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
       "streamSettings": {
-        "network": "ws",
-        "wsSettings": { "path": "/vless-ws" },
-        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
-      }
-    },
-    {
-      "tag": "trojan-xhttp",
-      "port": 10003,
-      "listen": "127.0.0.1",
-      "protocol": "trojan",
-      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
-      "streamSettings": {
         "network": "xhttp",
-        "xhttpSettings": { "path": "/trojan-xhttp" },
-        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
-      }
-    },
-    {
-      "tag": "vless-xhttp",
-      "port": 10004,
-      "listen": "127.0.0.1",
-      "protocol": "vless",
-      "settings": { "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}], "decryption": "none" },
-      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
-      "streamSettings": {
-        "network": "xhttp",
-        "xhttpSettings": { "path": "/vless-xhttp" },
+        "xhttpSettings": {
+          "path": "/vless-xhttp",
+          "mux": {
+            "enabled": true,
+            "concurrency": 4
+          }
+        },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     }
@@ -360,135 +355,63 @@ deploy_new_service() {
     "domainStrategy": "IPIfNonMatch",
     "rules": [
       { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
-      { "type": "field", "inboundTag": ["trojan-ws", "vless-ws", "trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
+      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
     ]
   }
 }
 EOF
 
-  # ==============================================
-  # 🎨 BEAUTIFUL DECOY HTML — Clean & Modern
-  # ==============================================
-  DECOY_HTML='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>System Status</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);color:#e2e8f0;min-height:100vh;display:flex;justify-content:center;align-items:center;text-align:center;padding:20px}.container{background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:48px 32px;max-width:420px;width:100%;backdrop-filter:blur(10px);box-shadow:0 8px 32px rgba(0,0,0,0.3)}.icon{font-size:64px;margin-bottom:24px}h1{color:#38bdf8;font-size:22px;font-weight:600;margin-bottom:12px}p{color:#94a3b8;font-size:15px;line-height:1.6;margin-bottom:24px}.status-badge{display:inline-flex;align-items:center;gap:8px;background:rgba(34,197,94,0.15);color:#86efac;padding:10px 20px;border-radius:50px;font-size:14px;font-weight:500}.status-dot{width:10px;height:10px;background:#22c55e;border-radius:50%;animation:pulse 2s infinite}@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}</style></head><body><div class="container"><div class="icon">✅</div><h1>System Operational</h1><p>Welcome to my '"$DISPLAY_ENGINE"' cloud application gateway.<br>All services are running normally.</p><div class="status-badge"><span class="status-dot"></span>Online & Healthy</div></div></body></html>'
+  DECOY_HTML='<!DOCTYPE html><html><head><title>System Status</title><style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;text-align:center;}h1{color:#58a6ff;font-size:24px;}p{color:#8b949e;}</style></head><body><div><h1>Welcome to my Cloud Application Gateway.</h1><p>Everything is operational.</p></div></body></html>'
+  echo "$DECOY_HTML" > index.html
 
-  # ==============================================
-  # ✅ FIXED ENTRYPOINT — waits for Xray to be ready
-  # ==============================================
-  cat > entrypoint.sh <<'EOF'
-#!/bin/sh
-set -e
-
-echo "✅ Starting Xray..."
-xray run -c /etc/xray.json &
-XRAY_PID=$!
-
-# Wait up to 15s for Xray to be ready
-for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  if nc -z 127.0.0.1 10001 2>/dev/null; then
-    echo "✅ Xray READY on port 10001"
-    break
-  fi
-  echo "⏳ Waiting Xray... ($i/15)"
-  sleep 1
-done
-
-if ! kill -0 $XRAY_PID 2>/dev/null; then
-  echo "❌ Xray CRASHED! Check config.json"
-  exit 1
-fi
-
-echo "✅ Starting Proxy..."
-exec "$@"
-EOF
-  chmod +x entrypoint.sh
-
-  # ==============================================
-  # 🟢 OPENRESTY
-  # ==============================================
   if [ "$ENGINE" = "openresty" ]; then
-    cat > nginx.conf <<'EOF'
+    cat > nginx.conf <<EOF
 worker_processes auto;
-events {
-    worker_connections 10240;
-    use epoll;
-    multi_accept on;
-}
+worker_rlimit_nofile 10240;
+events { worker_connections 4096; use epoll; multi_accept on; }
 http {
-    include mime.types;
-    default_type application/octet-stream;
-    sendfile on;
-    tcp_nopush on;
-    tcp_nodelay on;
-    keepalive_timeout 65;
-    keepalive_requests 100000;
-    client_max_body_size 4096M;
-    proxy_read_timeout 3600s;
-    proxy_send_timeout 3600s;
-    proxy_connect_timeout 10s;
-    proxy_buffering off;
-    proxy_request_buffering off;
-
-    server {
-        listen 8080;
-        server_name _;
-
-        location /health {
-            return 200 "OK\n";
-            add_header Content-Type text/plain;
-        }
-
-        location /trojan-ws {
-            proxy_pass http://127.0.0.1:10001;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_read_timeout 3600s;
-        }
-
-        location /vless-ws {
-            proxy_pass http://127.0.0.1:10002;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_read_timeout 3600s;
-        }
-
-        location /trojan-xhttp {
-            proxy_pass http://127.0.0.1:10003;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_read_timeout 3600s;
-        }
-
-        location /vless-xhttp {
-            proxy_pass http://127.0.0.1:10004;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_read_timeout 3600s;
-        }
-
-        location / {
-            default_type text/html;
-            return 200 'PLACEHOLDER_DECOY';
-        }
+  include mime.types;
+  default_type application/octet-stream;
+  sendfile on; tcp_nodelay on; tcp_nopush on;
+  keepalive_timeout 3600; keepalive_requests 100000;
+  client_max_body_size 0;
+  proxy_buffering off; proxy_request_buffering off;
+  proxy_http_version 1.1; proxy_connect_timeout 10s;
+  server {
+    listen 8080;
+    server_name _;
+    location /health { return 200 "OK\n"; add_header Content-Type text/plain; }
+    location / {
+      default_type text/html;
+      return 200 '$DECOY_HTML';
     }
+    location /trojan-xhttp {
+      proxy_pass http://127.0.0.1:10001;
+      proxy_http_version 1.1;
+      proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr;
+      proxy_read_timeout 3600s; proxy_send_timeout 3600s;
+    }
+    location /vless-xhttp {
+      proxy_pass http://127.0.0.1:10002;
+      proxy_http_version 1.1;
+      proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr;
+      proxy_read_timeout 3600s; proxy_send_timeout 3600s;
+    }
+  }
 }
 EOF
-    sed -i "s|PLACEHOLDER_DECOY|$DECOY_HTML|" nginx.conf
+    cat > entrypoint.sh <<'EOF'
+#!/bin/sh
+/usr/local/bin/xray run -c /etc/xray.json &
+sleep 2
+exec /usr/local/openresty/bin/openresty -g 'daemon off;'
+EOF
+    chmod +x entrypoint.sh
 
     cat > Dockerfile <<'EOF'
 FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
-RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && \
-    unzip -q xray.zip xray geosite.dat geoip.dat && \
-    chmod +x xray
-
+RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM openresty/openresty:alpine-fat
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
@@ -498,14 +421,14 @@ COPY nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /usr/local/bin/xray /entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["/entrypoint.sh", "/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
-  # ==============================================
-  # 🔵 ENVOY
-  # ==============================================
   elif [ "$ENGINE" = "envoy" ]; then
     cat > envoy.yaml <<EOF
+admin:
+  address:
+    socket_address: { address: 127.0.0.1, port_value: 9901 }
 static_resources:
   listeners:
   - name: listener_0
@@ -519,6 +442,7 @@ static_resources:
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
           stat_prefix: ingress_http
+          codec_type: AUTO
           route_config:
             name: local_route
             virtual_hosts:
@@ -527,24 +451,31 @@ static_resources:
               routes:
               - match: { prefix: "/health" }
                 direct_response: { status: 200, body: { inline_string: "OK\n" } }
-              - match: { prefix: "/trojan-ws" }
-                route: { cluster: trojan_cluster, upgrade_configs: [{ upgrade_type: "websocket" }], timeout: 3600s }
-              - match: { prefix: "/vless-ws" }
-                route: { cluster: vless_cluster, upgrade_configs: [{ upgrade_type: "websocket" }], timeout: 3600s }
               - match: { prefix: "/trojan-xhttp" }
-                route: { cluster: trojan_xhttp_cluster, timeout: 3600s }
+                route: { cluster: trojan_cluster, timeout: 3600s }
               - match: { prefix: "/vless-xhttp" }
-                route: { cluster: vless_xhttp_cluster, timeout: 3600s }
+                route: { cluster: vless_cluster, timeout: 3600s }
               - match: { prefix: "/" }
-                direct_response: { status: 200, body: { inline_string: '$DECOY_HTML' } }
+                route: { cluster: static_file_cluster }
           http_filters:
           - name: envoy.filters.http.router
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
   clusters:
+  - name: static_file_cluster
+    connect_timeout: 0.25s
+    type: STATIC
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: static_file_cluster
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: 127.0.0.1, port_value: 8081 }
   - name: trojan_cluster
     connect_timeout: 10s
-    type: STRICT_DNS
+    type: STATIC
     lb_policy: ROUND_ROBIN
     load_assignment:
       cluster_name: trojan_cluster
@@ -555,7 +486,7 @@ static_resources:
               socket_address: { address: 127.0.0.1, port_value: 10001 }
   - name: vless_cluster
     connect_timeout: 10s
-    type: STRICT_DNS
+    type: STATIC
     lb_policy: ROUND_ROBIN
     load_assignment:
       cluster_name: vless_cluster
@@ -564,52 +495,35 @@ static_resources:
         - endpoint:
             address:
               socket_address: { address: 127.0.0.1, port_value: 10002 }
-  - name: trojan_xhttp_cluster
-    connect_timeout: 10s
-    type: STRICT_DNS
-    lb_policy: ROUND_ROBIN
-    load_assignment:
-      cluster_name: trojan_xhttp_cluster
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address: { address: 127.0.0.1, port_value: 10003 }
-  - name: vless_xhttp_cluster
-    connect_timeout: 10s
-    type: STRICT_DNS
-    lb_policy: ROUND_ROBIN
-    load_assignment:
-      cluster_name: vless_xhttp_cluster
-      endpoints:
-      - lb_endpoints:
-        - endpoint:
-            address:
-              socket_address: { address: 127.0.0.1, port_value: 10004 }
 EOF
+    cat > entrypoint.sh <<'EOF'
+#!/bin/sh
+/usr/local/bin/xray run -c /etc/xray.json &
+sleep 2
+python3 -m http.server 8081 --directory /var/www &
+sleep 1
+exec envoy -c /etc/envoy.yaml
+EOF
+    chmod +x entrypoint.sh
 
     cat > Dockerfile <<'EOF'
 FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
-RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && \
-    unzip -q xray.zip xray geosite.dat geoip.dat && \
-    chmod +x xray
-
+RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM envoyproxy/envoy:v1.30-latest
+RUN apk add --no-cache python3
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
 COPY --from=builder /geoip.dat /usr/local/share/xray/
 COPY config.json /etc/xray.json
 COPY envoy.yaml /etc/envoy.yaml
+COPY index.html /var/www/index.html
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /usr/local/bin/xray /entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["/entrypoint.sh", "envoy", "-c", "/etc/envoy.yaml"]
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
-  # ==============================================
-  # 🟠 HAPROXY
-  # ==============================================
   elif [ "$ENGINE" = "haproxy" ]; then
     cat > haproxy.cfg <<EOF
 global
@@ -619,58 +533,45 @@ global
 defaults
     log global
     mode http
-    option httplog
     timeout connect 10s
     timeout client 3600s
     timeout server 3600s
 
 frontend main
     bind *:8080
-    mode http
-
     acl is_health path /health
-    acl is_trojan path /trojan-ws
-    acl is_vless path /vless-ws
-    acl is_trojan_xhttp path /trojan-xhttp
-    acl is_vless_xhttp path /vless-xhttp
+    acl is_trojan path_beg /trojan-xhttp
+    acl is_vless path_beg /vless-xhttp
 
-    http-request return status 200 content-type "text/plain" string "OK\n" if is_health
-
+    use_backend health_backend if is_health
     use_backend trojan_backend if is_trojan
     use_backend vless_backend if is_vless
-    use_backend trojan_xhttp_backend if is_trojan_xhttp
-    use_backend vless_xhttp_backend if is_vless_xhttp
+    default_backend default_backend
 
-    default_backend decoy_backend
+backend health_backend
+    http-request return status 200 content-type "text/plain" string "OK\n"
 
-backend decoy_backend
-    mode http
+backend default_backend
     http-request return status 200 content-type "text/html" string '$DECOY_HTML'
 
 backend trojan_backend
-    mode http
     server xray1 127.0.0.1:10001
 
 backend vless_backend
-    mode http
     server xray2 127.0.0.1:10002
-
-backend trojan_xhttp_backend
-    mode http
-    server xray3 127.0.0.1:10003
-
-backend vless_xhttp_backend
-    mode http
-    server xray4 127.0.0.1:10004
 EOF
+    cat > entrypoint.sh <<'EOF'
+#!/bin/sh
+/usr/local/bin/xray run -c /etc/xray.json &
+sleep 2
+exec haproxy -f /usr/local/etc/haproxy/haproxy.cfg -db
+EOF
+    chmod +x entrypoint.sh
 
     cat > Dockerfile <<'EOF'
 FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
-RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && \
-    unzip -q xray.zip xray geosite.dat geoip.dat && \
-    chmod +x xray
-
+RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM haproxy:2.8-alpine
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
@@ -681,11 +582,11 @@ COPY entrypoint.sh /entrypoint.sh
 USER root
 RUN chmod +x /usr/local/bin/xray /entrypoint.sh
 EXPOSE 8080
-ENTRYPOINT ["/entrypoint.sh", "haproxy", "-f", "/usr/local/etc/haproxy/haproxy.cfg", "-db"]
+ENTRYPOINT ["/entrypoint.sh"]
 EOF
   fi
 
-  echo -e "${CYAN}🔨 Building image ($ENGINE engine)...${NC}"
+  echo -e "${CYAN}🔨 Building XHTTP image ($ENGINE engine)...${NC}"
   gcloud builds submit --project="$PROJECT_ID" --tag gcr.io/$PROJECT_ID/$CLOUD_RUN_SERVICE_NAME . --quiet
 
   echo -e "${CYAN}🚀 Deploying to Cloud Run...${NC}"
@@ -694,7 +595,8 @@ EOF
     --project="$PROJECT_ID" --platform managed --region "$REGION" --allow-unauthenticated \
     --port 8080 --memory "$MEMORY" --cpu "$CPU" --concurrency "$CONCURRENCY" \
     --timeout "$TIMEOUT" --min-instances "$MIN_INST" --max-instances "$MAX_INST" \
-    --session-affinity --execution-environment gen2 $BILLING_FLAG --cpu-boost --quiet
+    --session-affinity \
+    --execution-environment gen2 $BILLING_FLAG --cpu-boost --quiet
 
   CLOUD_RUN_URL=$(gcloud run services describe "$CLOUD_RUN_SERVICE_NAME" --project="$PROJECT_ID" --region="$REGION" --format='value(status.url)')
   DOMAIN=$(echo "$CLOUD_RUN_URL" | sed 's|https://||')
@@ -702,40 +604,28 @@ EOF
 
   clear
   echo -e "\n${CYAN}=========================================${NC}"
-  echo -e "${GREEN}✅ MULTI-ENGINE-GCP-XRAY DEPLOYMENT SUCCESS! (${ENGINE^^})${NC}"
+  echo -e "${GREEN}✅ GCP-XRAY XHTTP DEPLOYMENT SUCCESS! (${ENGINE^^})${NC}"
+  echo -e "${GREEN}✅ MUX ENABLED COMPATIBLE ON NetMod ✅${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}🔗 SHORT LINK:${NC} $CANONICAL_LINK"
   echo -e "${GREEN}🌐 NETMOD HOST:${NC} $DOMAIN"
   echo -e "${GREEN}💚 HEALTH CHECK:${NC} $CANONICAL_LINK/health"
   echo -e "${CYAN}=========================================${NC}"
-  echo -e "${YELLOW}📝 AVAILABLE ENDPOINTS:${NC}"
-  echo -e "   - Trojan+WS:   $CANONICAL_LINK/trojan-ws"
-  echo -e "   - VLESS+WS:    $CANONICAL_LINK/vless-ws"
-  echo -e "   - Trojan+XHTTP:$CANONICAL_LINK/trojan-xhttp"
-  echo -e "   - VLESS+XHTTP: $CANONICAL_LINK/vless-xhttp"
-  echo ""
-  echo -e "${CYAN}🔑 CREDENTIALS:${NC}"
-  echo -e "   - Trojan Password: gcp-xray"
-  echo -e "   - VLESS ID: a1b2c3d4-5678-40ef-98ab-cdef01234567"
-  echo -e "   - Decryption: none (VLESS)"
-  echo ""
-  read -p $'\nPress [Enter] to return to Main Menu...' </dev/tty
+
+  read -p $'\nPress [Enter] to return to Main Menu...'
 }
 
-# ==============================================
-# MAIN MENU
-# ==============================================
 while true; do
   clear
   echo "======================================"
-  echo "  MULTI-WS-XHTTP-GCP-XRAY DEPLOYER    "
-  echo "       FIXED + BEAUTIFUL DECOY        "
+  echo "  GCP-XRAY XHTTP DEPLOYER MENU        "
+  echo "  ✅ MUX ENABLED — Works with Mux ON  "
   echo "======================================"
-  echo "1) Deploy New GCP-XRAY Service"
+  echo "1) Deploy New GCP-XRAY XHTTP Service"
   echo "2) List All Services & FULL DETAILS"
   echo "3) Exit Script"
   echo "======================================"
-  read -p "Select Option [1-3]: " MENU_CHOICE </dev/tty
+  read -p "Select Option [1-3]: " MENU_CHOICE
 
   case $MENU_CHOICE in
     1) deploy_new_service ;;
