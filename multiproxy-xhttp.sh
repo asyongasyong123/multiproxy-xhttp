@@ -294,10 +294,7 @@ deploy_new_service() {
   cat > config.json <<'EOF'
 {
   "log": { "loglevel": "warning" },
-  "dns": {
-    "servers": ["8.8.8.8", "8.8.4.4"],
-    "strategy": "UseIPv4"
-  },
+  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
   "policy": {
     "levels": {
       "0": {
@@ -321,7 +318,10 @@ deploy_new_service() {
           "path": "/trojan-xhttp",
           "mux": {
             "enabled": true,
-            "concurrency": 4
+            "concurrency": 4,
+            "maxConnections": 4,
+            "minStreams": 1,
+            "maxStreams": 32
           }
         },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
@@ -340,7 +340,10 @@ deploy_new_service() {
           "path": "/vless-xhttp",
           "mux": {
             "enabled": true,
-            "concurrency": 4
+            "concurrency": 4,
+            "maxConnections": 4,
+            "minStreams": 1,
+            "maxStreams": 32
           }
         },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
@@ -348,14 +351,14 @@ deploy_new_service() {
     }
   ],
   "outbounds": [
-    { "protocol": "freedom", "tag": "direct", "settings": { "domainStrategy": "UseIPv4" } },
+    { "protocol": "freedom", "tag": "direct" },
     { "protocol": "blackhole", "tag": "blocked", "settings": { "response": { "type": "none" } } }
   ],
   "routing": {
     "domainStrategy": "IPIfNonMatch",
     "rules": [
       { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
-      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
+      { "type": "field", "inboundTag": ["trojan-xhttp","vless-xhttp"], "outboundTag": "direct" }
     ]
   }
 }
