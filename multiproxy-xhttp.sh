@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # =========================================
-# 🚀 GCP-XRAY XHTTP DEPLOYER — MUX ENABLED ✅
-# ✅ With Added Mux Block & Fixed Envoy Build
+# 🚀 GCP-XRAY XHTTP DEPLOYER ✅
+# ✅ Please Turn Off Mux On Netmod Settings
 # =========================================
 
 GREEN='\033[1;32m'
@@ -285,7 +285,7 @@ deploy_new_service() {
   echo -e "${GREEN}✅ Region:${NC} $REGION"
   echo -e "${GREEN}✅ Service Name:${NC} $CLOUD_RUN_SERVICE_NAME"
   echo -e "${GREEN}✅ Scaling:${NC} Min: $MIN_INST | Max: $MAX_INST"
-  echo -e "${GREEN}✅ Mux: ENABLED — Working on NetMod ✅${NC}"
+  echo -e "${GREEN}✅ Performance:${NC} Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s"
   echo ""
 
   # ==============================================
@@ -609,7 +609,7 @@ EOF
   clear
   echo -e "\n${CYAN}=========================================${NC}"
   echo -e "${GREEN}✅ GCP-XRAY XHTTP DEPLOYMENT SUCCESS! (${ENGINE^^})${NC}"
-  echo -e "${GREEN}✅ MUX ENABLED COMPATIBLE ON NetMod ✅${NC}"
+  echo -e "${GREEN}✅ Please Turn Off Mux ON NetMod Settings ✅${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}🔗 SHORT LINK:${NC} $CANONICAL_LINK"
   echo -e "${GREEN}🌐 NETMOD HOST:${NC} $DOMAIN"
@@ -623,7 +623,7 @@ while true; do
   clear
   echo "======================================"
   echo "  GCP-XRAY XHTTP DEPLOYER MENU        "
-  echo "  MUX ENABLED  "
+  echo " Please Turn Off Mux on Netmod Settings"
   echo "======================================"
   echo "1) Deploy New GCP-XRAY XHTTP Service"
   echo "2) List All Services & FULL DETAILS"
