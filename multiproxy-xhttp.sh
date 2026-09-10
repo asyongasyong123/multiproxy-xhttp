@@ -514,7 +514,8 @@ FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
 RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM envoyproxy/envoy:v1.30-latest
-RUN apk add --no-cache python3
+USER root
+RUN apt-get update && apt-get install -y python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
 COPY --from=builder /geoip.dat /usr/local/share/xray/
@@ -620,7 +621,7 @@ EOF
 while true; do
   clear
   echo "======================================"
-  echo "  GCP-XRAY XHTTP PACKET-UP MENU       "
+  echo "  GCP-XRAY XHTTP MENU       "
   echo "======================================"
   echo "1) Deploy New GCP-XRAY XHTTP Service"
   echo "2) List All Services & FULL DETAILS"
