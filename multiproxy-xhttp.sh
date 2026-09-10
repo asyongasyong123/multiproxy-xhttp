@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # =========================================
-# 🚀 GCP-XRAY XHTTP DEPLOYER ✅
-# ✅ Please Turn Off Mux On Netmod Settings
+# 🚀 GCP-XRAY XHTTP MULTI-ENGINE DEPLOYER
+# ✅ ENGINES: OPENRESTY, ENVOY, HAPROXY
+# ✅ PROTOCOL: XHTTP (PACKET-UP MODE ENABLED)
 # =========================================
 
 GREEN='\033[1;32m'
@@ -13,7 +14,7 @@ CYAN='\033[1;36m'
 NC='\033[0m'
 
 # ==============================================
-# DEPENDENCIES
+# AUTO INSTALL JQ IF MISSING
 # ==============================================
 if ! command -v jq &> /dev/null; then
   echo -e "\n${YELLOW}⚠️ Installing required tool: jq...${NC}"
@@ -21,6 +22,7 @@ if ! command -v jq &> /dev/null; then
     echo -e "${RED}❌ Failed to install jq!${NC}"
     exit 1
   }
+  echo -e "${GREEN}✅ jq installed successfully!${NC}"
 fi
 
 # ==============================================
@@ -200,21 +202,21 @@ deploy_new_service() {
       case $RES_MODE in
           1)
               echo -e "\n${CYAN}--- AUTO PRESETS ---${NC}"
-              echo "1) Basic:    1Gi RAM + 1 vCPU"
-              echo "2) Balanced: 2Gi RAM + 2 vCPU ✅"
-              echo "3) Turbo:    4Gi RAM + 2 vCPU (High Concurrency)"
+              echo "1) Basic:    2Gi RAM + 1 vCPU"
+              echo "2) Balanced: 4Gi RAM + 2 vCPU ✅"
+              echo "3) Turbo:    8Gi RAM + 4 vCPU (High Concurrency)"
               read -p "Choose preset [1-3]: " AUTO_CHOICE
               case $AUTO_CHOICE in
-                  1) MEMORY="1Gi"; CPU="1" ;;
-                  2) MEMORY="2Gi"; CPU="2" ;;
-                  3) MEMORY="4Gi"; CPU="2" ;;
+                  1) MEMORY="2Gi"; CPU="1" ;;
+                  2) MEMORY="4Gi"; CPU="2" ;;
+                  3) MEMORY="8Gi"; CPU="4" ;;
                   *) echo -e "${YELLOW}Using Balanced preset${NC}"; MEMORY="2Gi"; CPU="2" ;;
               esac
               echo -e "${GREEN}✅ Applied Preset: $MEMORY | $CPU vCPU${NC}"
               
-              MIN_INST=1
+              MIN_INST=0
               MAX_INST=5
-              CONCURRENCY=200
+              CONCURRENCY=150
               TIMEOUT=3600
               break
               ;;
@@ -279,86 +281,84 @@ deploy_new_service() {
   clear
   echo ""
   echo -e "${CYAN}=========================================${NC}"
-  echo -e "${GREEN}🚀 GCP-XRAY XHTTP DEPLOYER | MUX ENABLED ✅${NC}"
+  echo -e "${GREEN}🚀 GCP-XRAY XHTTP DEPLOYER | MULTI-ENGINE SETUP${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}✅ Project:${NC} $PROJECT_ID"
   echo -e "${GREEN}✅ Region:${NC} $REGION"
   echo -e "${GREEN}✅ Service Name:${NC} $CLOUD_RUN_SERVICE_NAME"
   echo -e "${GREEN}✅ Scaling:${NC} Min: $MIN_INST | Max: $MAX_INST"
-  echo -e "${GREEN}✅ Performance:${NC} Concurrency: $CONCURRENCY | Timeout: ${TIMEOUT}s"
   echo ""
 
   # ==============================================
-  # XRAY CONFIG — MUX ENABLED ✅
+  # XRAY CONFIG (XHTTP WITH PACKET-UP MODE)
   # ==============================================
   cat > config.json <<'EOF'
 {
   "log": { "loglevel": "warning" },
-  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
+  "dns": {
+    "servers": ["8.8.8.8", "8.8.4.4"],
+    "strategy": "UseIPv4"
+  },
   "policy": {
     "levels": {
       "0": {
         "handshake": 2,
         "connIdle": 3600,
-        "bufferSize": 1048576
+        "bufferSize": 524288
       }
     }
   },
   "inbounds": [
     {
-      "tag": "trojan-xhttp",
       "port": 10001,
       "listen": "127.0.0.1",
       "protocol": "trojan",
-      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
+      "tag": "trojan-xhttp",
+      "settings": {
+        "clients": [{"password": "gcp-xray", "level": 0}]
+      },
       "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
       "streamSettings": {
         "network": "xhttp",
         "xhttpSettings": {
           "path": "/trojan-xhttp",
-          "mux": {
-            "enabled": true,
-            "concurrency": 4,
-            "maxConnections": 4,
-            "minStreams": 1,
-            "maxStreams": 32
-          }
+          "mode": "packet-up",
+          "keepAlivePeriod": 30
         },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     },
     {
-      "tag": "vless-xhttp",
       "port": 10002,
       "listen": "127.0.0.1",
       "protocol": "vless",
-      "settings": { "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}], "decryption": "none" },
+      "tag": "vless-xhttp",
+      "settings": {
+        "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}],
+        "decryption": "none"
+      },
       "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
       "streamSettings": {
         "network": "xhttp",
+        "security": "none",
         "xhttpSettings": {
           "path": "/vless-xhttp",
-          "mux": {
-            "enabled": true,
-            "concurrency": 4,
-            "maxConnections": 4,
-            "minStreams": 1,
-            "maxStreams": 32
-          }
+          "mode": "packet-up",
+          "keepAlivePeriod": 30
         },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     }
   ],
   "outbounds": [
-    { "protocol": "freedom", "tag": "direct" },
+    { "protocol": "freedom", "tag": "direct", "settings": { "domainStrategy": "UseIPv4" } },
     { "protocol": "blackhole", "tag": "blocked", "settings": { "response": { "type": "none" } } }
   ],
   "routing": {
     "domainStrategy": "IPIfNonMatch",
     "rules": [
       { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
-      { "type": "field", "inboundTag": ["trojan-xhttp","vless-xhttp"], "outboundTag": "direct" }
+      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
     ]
   }
 }
@@ -514,8 +514,7 @@ FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
 RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM envoyproxy/envoy:v1.30-latest
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache python3
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
 COPY --from=builder /geoip.dat /usr/local/share/xray/
@@ -590,7 +589,7 @@ ENTRYPOINT ["/entrypoint.sh"]
 EOF
   fi
 
-  echo -e "${CYAN}🔨 Building XHTTP image ($ENGINE engine)...${NC}"
+  echo -e "${CYAN}🔨 Building XHTTP Packet-Up image ($ENGINE engine)...${NC}"
   gcloud builds submit --project="$PROJECT_ID" --tag gcr.io/$PROJECT_ID/$CLOUD_RUN_SERVICE_NAME . --quiet
 
   echo -e "${CYAN}🚀 Deploying to Cloud Run...${NC}"
@@ -608,8 +607,7 @@ EOF
 
   clear
   echo -e "\n${CYAN}=========================================${NC}"
-  echo -e "${GREEN}✅ GCP-XRAY XHTTP DEPLOYMENT SUCCESS! (${ENGINE^^})${NC}"
-  echo -e "${GREEN}✅ Please Turn Off Mux ON NetMod Settings ✅${NC}"
+  echo -e "${GREEN}✅ GCP-XRAY XHTTP PACKET-UP DEPLOYMENT SUCCESS! (${ENGINE^^})${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}🔗 SHORT LINK:${NC} $CANONICAL_LINK"
   echo -e "${GREEN}🌐 NETMOD HOST:${NC} $DOMAIN"
@@ -622,8 +620,7 @@ EOF
 while true; do
   clear
   echo "======================================"
-  echo "  GCP-XRAY XHTTP DEPLOYER MENU        "
-  echo " Please Turn Off Mux on Netmod Settings"
+  echo "  GCP-XRAY XHTTP PACKET-UP MENU       "
   echo "======================================"
   echo "1) Deploy New GCP-XRAY XHTTP Service"
   echo "2) List All Services & FULL DETAILS"
