@@ -3,7 +3,7 @@ set -euo pipefail
 
 # =========================================
 # 🚀 GCP-XRAY XHTTP DEPLOYER — MUX ENABLED ✅
-# ✅ With Added Mux Block
+# ✅ With Added Mux Block & Fixed Envoy Build
 # =========================================
 
 GREEN='\033[1;32m'
@@ -285,7 +285,7 @@ deploy_new_service() {
   echo -e "${GREEN}✅ Region:${NC} $REGION"
   echo -e "${GREEN}✅ Service Name:${NC} $CLOUD_RUN_SERVICE_NAME"
   echo -e "${GREEN}✅ Scaling:${NC} Min: $MIN_INST | Max: $MAX_INST"
-  echo -e "${GREEN}✅ Mux: ENABLED — Mogana kung naka-ON sa NetMod ✅${NC}"
+  echo -e "${GREEN}✅ Mux: ENABLED — Working on NetMod ✅${NC}"
   echo ""
 
   # ==============================================
@@ -511,7 +511,8 @@ FROM alpine:3.20 AS builder
 RUN apk add --no-cache curl unzip ca-certificates
 RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
 FROM envoyproxy/envoy:v1.30-latest
-RUN apk add --no-cache python3
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /xray /usr/local/bin/xray
 COPY --from=builder /geosite.dat /usr/local/share/xray/
 COPY --from=builder /geoip.dat /usr/local/share/xray/
@@ -619,7 +620,7 @@ while true; do
   clear
   echo "======================================"
   echo "  GCP-XRAY XHTTP DEPLOYER MENU        "
-  echo "  ✅ MUX ENABLED — Works with Mux ON  "
+  echo "  MUX ENABLED  "
   echo "======================================"
   echo "1) Deploy New GCP-XRAY XHTTP Service"
   echo "2) List All Services & FULL DETAILS"
