@@ -3,8 +3,8 @@ set -euo pipefail
 
 # =========================================
 # 🚀 GCP-XRAY XHTTP MULTI-ENGINE DEPLOYER
-# ✅ ENGINES: OPENRESTY, ENVOY, HAPROXY
-# ✅ PROTOCOL: XHTTP (PACKET-UP MODE ENABLED)
+# ✅ ENGINES: OPENRESTY, ENVOY, HAPROXY, CADDY
+# ✅ PROTOCOL: XHTTP (PACKET-UP MODE ENABLED - ISOLATED CONFIGS)
 # =========================================
 
 GREEN='\033[1;32m'
@@ -164,13 +164,15 @@ deploy_new_service() {
   echo "1) OpenResty          - [Standard / Highly Reliable] ✅"
   echo "2) Envoy Proxy        - [High Performance / Cloud Native]"
   echo "3) HAProxy            - [Ultra Low Latency / Lightweight]"
+  echo "4) Caddy Server       - [Modern / Ultra-Fast HTTP/2 & HTTP/3]"
   while true; do
-      read -p "Select Engine [1-3]: " ENGINE_CHOICE
+      read -p "Select Engine [1-4]: " ENGINE_CHOICE
       case $ENGINE_CHOICE in
           1) ENGINE="openresty"; DISPLAY_ENGINE="OpenResty"; echo -e "${GREEN}✅ Selected: OpenResty${NC}"; break ;;
           2) ENGINE="envoy"; DISPLAY_ENGINE="Envoy Proxy"; echo -e "${GREEN}✅ Selected: Envoy Proxy${NC}"; break ;;
           3) ENGINE="haproxy"; DISPLAY_ENGINE="HAProxy"; echo -e "${GREEN}✅ Selected: HAProxy${NC}"; break ;;
-          *) echo -e "${RED}Enter 1, 2, or 3 only${NC}" ;;
+          4) ENGINE="caddy"; DISPLAY_ENGINE="Caddy Server"; echo -e "${GREEN}✅ Selected: Caddy Server${NC}"; break ;;
+          *) echo -e "${RED}Enter 1, 2, 3, or 4 only${NC}" ;;
       esac
   done
 
@@ -281,50 +283,38 @@ deploy_new_service() {
   clear
   echo ""
   echo -e "${CYAN}=========================================${NC}"
-  echo -e "${GREEN}🚀 GCP-XRAY XHTTP DEPLOYER | MULTI-ENGINE SETUP${NC}"
+  echo -e "${GREEN}🚀 GCP-XRAY XHTTP DEPLOYER | ISOLATED ENGINE SETUP${NC}"
   echo -e "${CYAN}=========================================${NC}"
   echo -e "${GREEN}✅ Project:${NC} $PROJECT_ID"
   echo -e "${GREEN}✅ Region:${NC} $REGION"
+  echo -e "${GREEN}✅ Engine:${NC} $DISPLAY_ENGINE"
   echo -e "${GREEN}✅ Service Name:${NC} $CLOUD_RUN_SERVICE_NAME"
   echo -e "${GREEN}✅ Scaling:${NC} Min: $MIN_INST | Max: $MAX_INST"
   echo ""
 
-  # ==============================================
-  # XRAY CONFIG (XHTTP WITH PACKET-UP MODE)
-  # ==============================================
-  cat > config.json <<'EOF'
+  DECOY_HTML='<!DOCTYPE html><html><head><title>System Status</title><style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;text-align:center;}h1{color:#58a6ff;font-size:24px;}p{color:#8b949e;}</style></head><body><div><h1>Welcome to my Cloud Application Gateway.</h1><p>Everything is operational.</p></div></body></html>'
+  echo "$DECOY_HTML" > index.html
+
+  # =========================================================================
+  # 📂 ENGINE 1: OPENRESTY (Dedicated Configs)
+  # =========================================================================
+  if [ "$ENGINE" = "openresty" ]; then
+    cat > config.json <<'EOF'
 {
   "log": { "loglevel": "warning" },
-  "dns": {
-    "servers": ["8.8.8.8", "8.8.4.4"],
-    "strategy": "UseIPv4"
-  },
-  "policy": {
-    "levels": {
-      "0": {
-        "handshake": 2,
-        "connIdle": 3600,
-        "bufferSize": 524288
-      }
-    }
-  },
+  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
+  "policy": { "levels": { "0": { "handshake": 2, "connIdle": 3600, "bufferSize": 524288 } } },
   "inbounds": [
     {
       "port": 10001,
       "listen": "127.0.0.1",
       "protocol": "trojan",
       "tag": "trojan-xhttp",
-      "settings": {
-        "clients": [{"password": "gcp-xray", "level": 0}]
-      },
+      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
       "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
       "streamSettings": {
         "network": "xhttp",
-        "xhttpSettings": {
-          "path": "/trojan-xhttp",
-          "mode": "packet-up",
-          "keepAlivePeriod": 30
-        },
+        "xhttpSettings": { "path": "/trojan-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     },
@@ -341,11 +331,7 @@ deploy_new_service() {
       "streamSettings": {
         "network": "xhttp",
         "security": "none",
-        "xhttpSettings": {
-          "path": "/vless-xhttp",
-          "mode": "packet-up",
-          "keepAlivePeriod": 30
-        },
+        "xhttpSettings": { "path": "/vless-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
         "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
       }
     }
@@ -364,10 +350,6 @@ deploy_new_service() {
 }
 EOF
 
-  DECOY_HTML='<!DOCTYPE html><html><head><title>System Status</title><style>body{font-family:sans-serif;background:#0d1117;color:#c9d1d9;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;text-align:center;}h1{color:#58a6ff;font-size:24px;}p{color:#8b949e;}</style></head><body><div><h1>Welcome to my Cloud Application Gateway.</h1><p>Everything is operational.</p></div></body></html>'
-  echo "$DECOY_HTML" > index.html
-
-  if [ "$ENGINE" = "openresty" ]; then
     cat > nginx.conf <<EOF
 worker_processes auto;
 worker_rlimit_nofile 10240;
@@ -403,6 +385,7 @@ http {
   }
 }
 EOF
+
     cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
@@ -427,7 +410,61 @@ EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
+  # =========================================================================
+  # 📂 ENGINE 2: ENVOY PROXY (Dedicated Configs)
+  # =========================================================================
   elif [ "$ENGINE" = "envoy" ]; then
+    cat > config.json <<'EOF'
+{
+  "log": { "loglevel": "warning" },
+  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
+  "policy": { "levels": { "0": { "handshake": 2, "connIdle": 3600, "bufferSize": 524288 } } },
+  "inbounds": [
+    {
+      "port": 10001,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "tag": "trojan-xhttp",
+      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "/trojan-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    },
+    {
+      "port": 10002,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "tag": "vless-xhttp",
+      "settings": {
+        "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}],
+        "decryption": "none"
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": { "path": "/vless-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct", "settings": { "domainStrategy": "UseIPv4" } },
+    { "protocol": "blackhole", "tag": "blocked", "settings": { "response": { "type": "none" } } }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
+      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
+    ]
+  }
+}
+EOF
+
     cat > envoy.yaml <<EOF
 admin:
   address:
@@ -499,6 +536,7 @@ static_resources:
             address:
               socket_address: { address: 127.0.0.1, port_value: 10002 }
 EOF
+
     cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
@@ -528,7 +566,61 @@ EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
 EOF
 
+  # =========================================================================
+  # 📂 ENGINE 3: HAPROXY (Dedicated Configs)
+  # =========================================================================
   elif [ "$ENGINE" = "haproxy" ]; then
+    cat > config.json <<'EOF'
+{
+  "log": { "loglevel": "warning" },
+  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
+  "policy": { "levels": { "0": { "handshake": 2, "connIdle": 3600, "bufferSize": 524288 } } },
+  "inbounds": [
+    {
+      "port": 10001,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "tag": "trojan-xhttp",
+      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "/trojan-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    },
+    {
+      "port": 10002,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "tag": "vless-xhttp",
+      "settings": {
+        "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}],
+        "decryption": "none"
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": { "path": "/vless-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct", "settings": { "domainStrategy": "UseIPv4" } },
+    { "protocol": "blackhole", "tag": "blocked", "settings": { "response": { "type": "none" } } }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
+      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
+    ]
+  }
+}
+EOF
+
     cat > haproxy.cfg <<EOF
 global
     log stdout format raw local0
@@ -564,6 +656,7 @@ backend trojan_backend
 backend vless_backend
     server xray2 127.0.0.1:10002
 EOF
+
     cat > entrypoint.sh <<'EOF'
 #!/bin/sh
 /usr/local/bin/xray run -c /etc/xray.json &
@@ -584,6 +677,117 @@ COPY config.json /etc/xray.json
 COPY haproxy.cfg /usr/local/etc/haproxy/haproxy.cfg
 COPY entrypoint.sh /entrypoint.sh
 USER root
+RUN chmod +x /usr/local/bin/xray /entrypoint.sh
+EXPOSE 8080
+ENTRYPOINT ["/entrypoint.sh"]
+EOF
+
+  # =========================================================================
+  # 📂 ENGINE 4: CADDY SERVER (Dedicated Configs)
+  # =========================================================================
+  elif [ "$ENGINE" = "caddy" ]; then
+    cat > config.json <<'EOF'
+{
+  "log": { "loglevel": "warning" },
+  "dns": { "servers": ["8.8.8.8", "8.8.4.4"], "strategy": "UseIPv4" },
+  "policy": { "levels": { "0": { "handshake": 2, "connIdle": 3600, "bufferSize": 524288 } } },
+  "inbounds": [
+    {
+      "port": 10001,
+      "listen": "127.0.0.1",
+      "protocol": "trojan",
+      "tag": "trojan-xhttp",
+      "settings": { "clients": [{"password": "gcp-xray", "level": 0}] },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "/trojan-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    },
+    {
+      "port": 10002,
+      "listen": "127.0.0.1",
+      "protocol": "vless",
+      "tag": "vless-xhttp",
+      "settings": {
+        "clients": [{"id": "a1b2c3d4-5678-40ef-98ab-cdef01234567", "level": 0}],
+        "decryption": "none"
+      },
+      "sniffing": { "enabled": true, "destOverride": ["http","tls"], "routeOnly": true },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": { "path": "/vless-xhttp", "mode": "packet-up", "keepAlivePeriod": 30 },
+        "sockopt": { "tcpNoDelay": true, "tcpFastOpen": true, "tcpKeepAliveIdle": 300, "tcpKeepAliveInterval": 30 }
+      }
+    }
+  ],
+  "outbounds": [
+    { "protocol": "freedom", "tag": "direct", "settings": { "domainStrategy": "UseIPv4" } },
+    { "protocol": "blackhole", "tag": "blocked", "settings": { "response": { "type": "none" } } }
+  ],
+  "routing": {
+    "domainStrategy": "IPIfNonMatch",
+    "rules": [
+      { "type": "field", "domain": ["geosite:category-ads-all"], "outboundTag": "blocked" },
+      { "type": "field", "inboundTag": ["trojan-xhttp", "vless-xhttp"], "outboundTag": "direct" }
+    ]
+  }
+}
+EOF
+
+    cat > Caddyfile <<EOF
+:8080 {
+  respond /health "OK" 200
+
+  handle /trojan-xhttp* {
+    reverse_proxy 127.0.0.1:10001 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      transport http {
+        versions 1.1
+      }
+    }
+  }
+
+  handle /vless-xhttp* {
+    reverse_proxy 127.0.0.1:10002 {
+      header_up Host {host}
+      header_up X-Real-IP {remote_host}
+      transport http {
+        versions 1.1
+      }
+    }
+  }
+
+  handle {
+    root * /var/www
+    file_server
+  }
+}
+EOF
+
+    cat > entrypoint.sh <<'EOF'
+#!/bin/sh
+/usr/local/bin/xray run -c /etc/xray.json &
+sleep 2
+exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
+EOF
+    chmod +x entrypoint.sh
+
+    cat > Dockerfile <<'EOF'
+FROM alpine:3.20 AS builder
+RUN apk add --no-cache curl unzip ca-certificates
+RUN curl -L https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip -o xray.zip && unzip -q xray.zip xray geosite.dat geoip.dat && chmod +x xray
+FROM caddy:2-alpine
+COPY --from=builder /xray /usr/local/bin/xray
+COPY --from=builder /geosite.dat /usr/local/share/xray/
+COPY --from=builder /geoip.dat /usr/local/share/xray/
+COPY config.json /etc/xray.json
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY index.html /var/www/index.html
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /usr/local/bin/xray /entrypoint.sh
 EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
@@ -633,6 +837,6 @@ while true; do
     1) deploy_new_service ;;
     2) list_deployed_services ;;
     3) echo -e "\n👋 Goodbye!"; exit 0 ;;
-    *) echo -e "${RED}❌ Enter 1/2/3 only${NC}"; sleep 2 ;;
+    *) echo -e "${RED}❌ Enter 1/2/3/4 only${NC}"; sleep 2 ;;
   esac
 done
